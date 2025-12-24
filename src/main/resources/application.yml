@@ -1,0 +1,20 @@
+
+spring:
+  application:
+    name: payments-orchestrator
+  jackson:
+    serialization:
+      WRITE_DATES_AS_TIMESTAMPS: false
+
+server:
+  port: 0
+
+payments:
+  stripe:
+    secretKey: ""        # put your Stripe secret key (sk_live_... or sk_test_...)
+    webhookSecret: ""    # optional: if you verify Stripe signatures
+  razorpay:
+    keyId: ""            # Razorpay key id
+    keySecret: ""        # Razorpay key secret
+  security:
+    pciMetaKeyBase64: "" # 32-byte AES key, base64 (AES-256-GCM)
