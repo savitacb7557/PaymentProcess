@@ -2,10 +2,8 @@ package com.tcs.payments.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tcs.payments.model.Amount;
-import com.stripe.service.CouponService;
 import com.tcs.payments.model.PaymentRequest;
 import com.tcs.payments.model.PaymentResponse;
-import com.tcs.payments.policy.RegionPolicy;
 import com.tcs.payments.provider.ApplePayProviderStripe;
 import com.tcs.payments.provider.CardProviderStripe;
 import com.tcs.payments.provider.CodProvider;
@@ -18,159 +16,166 @@ import com.tcs.payments.security.ThreeDSDecider;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-
-
 
 @Service
 public class PaymentOrchestrator {
-	private final CardProviderStripe card;
-	private final ApplePayProviderStripe apple;
-	private final GooglePayProviderStripe gpay;
-	private final CodProvider cod = new CodProvider();
-	private final EmiProviderRazorpay emi;
-	private final FraudEngine fraud = new FraudEngine();
-	private final ThreeDSDecider decider = new ThreeDSDecider();
-	private final CryptoUtil cryptoUtil;
-	
-	public PaymentOrchestrator(
-			@Value("${payments.stripe.secretKey}") String stripeKey,
-			@Value("${payments.razorpay.keyId}") String razorpayKeyId,
-			@Value("${payments.razorpay.keySecret}") String razorpayKeySecret,
-			@Value("${payments.security.pciMetaKeyBase64:}") String pciKey
-			) throws Exception {
-		this.card = new CardProviderStripe(stripeKey);
-		this.apple = new ApplePayProviderStripe(stripeKey);
-		this.gpay = new GooglePayProviderStripe(stripeKey);
-		this.emi = new EmiProviderRazorpay(razorpayKeyId,razorpayKeySecret);
-		/*
-		 * this.cryptoUtil = new CryptoUtil(pciKey == null ?
-		 * java.util.Base64.getEncoder().encodeToString(new byte[32]) : pciKey);
-		 */
+    private static final Logger log = LoggerFactory.getLogger(PaymentOrchestrator.class);
 
-		// Prepare 32-byte AES key material
-		        byte[] keyBytes;
-		        if (pciKey == null || pciKey.isBlank()) {
-		            // Fallback: securely generate a 256-bit key.
-		            keyBytes = new byte[32];
-		            new SecureRandom().nextBytes(keyBytes);
-		            // NOTE: Prefer configuring a stable key in your env to avoid decryption issues across restarts.
-		        } else {
-		            // Expect base64-encoded key; decode to raw bytes.
-		            keyBytes = Base64.getDecoder().decode(pciKey);
-		        }
+    private final CardProviderStripe card;
+    private final ApplePayProviderStripe apple;
+    private final GooglePayProviderStripe gpay;
+    private final CodProvider cod = new CodProvider();
+    private final EmiProviderRazorpay emi;
+    private final FraudEngine fraud = new FraudEngine();
+    private final ThreeDSDecider decider = new ThreeDSDecider();
+    private final CryptoUtil cryptoUtil;
+    private final PaymentsProperties paymentsProperties;
 
-		        if (keyBytes.length != 32) {
-		            throw new IllegalArgumentException(
-		                "payments.security.pciMetaKeyBase64 must decode to 32 bytes (AES-256)."
-		            );
-		        }
+    public PaymentOrchestrator(PaymentsProperties paymentsProperties) throws Exception {
+        this.paymentsProperties = paymentsProperties;
 
-		        this.cryptoUtil = new CryptoUtil(keyBytes);
-		    }
+        // Initialize Providers using injected properties
+        String stripeKey = paymentsProperties.getStripe().getSecretKey();
+        this.card = new CardProviderStripe(stripeKey);
+        this.apple = new ApplePayProviderStripe(stripeKey);
+        this.gpay = new GooglePayProviderStripe(stripeKey);
+        
+        this.emi = new EmiProviderRazorpay(
+            paymentsProperties.getRazorpay().getKeyId(),
+            paymentsProperties.getRazorpay().getKeySecret()
+        );
 
-	
-	public PaymentResponse initiate(PaymentRequest req) throws Exception {
-		RegionPolicy.Policy policy = RegionPolicy.POLICIES.get(req.getRegion());
-				if(policy == null) return fail("Policy", "region_not_supported");
-				if(!policy.enabledMethods.contains(req.getMethod())) return
-						fail("Policy","method_not_enabled_for_region");
-				
+        // Initialize Crypto logic
+        byte[] keyBytes;
+        String pciKey = paymentsProperties.getSecurity().getPciMetaKeyBase64();
+        
+        if (pciKey == null || pciKey.isBlank()) {
+            keyBytes = new byte[32];
+            new SecureRandom().nextBytes(keyBytes);
+            log.warn("Using ephemeral PCI key; data will not be decryptable after restart.");
+        } else {
+            keyBytes = Base64.getDecoder().decode(pciKey);
+        }
 
-CouponsService.Result cr = new CouponsService()
-    .apply(req.getRegion(), req.getAmount(), req.getCouponCode());
-				Amount toCharge = cr.finalAmount();
-				
-				FraudEngine.Verdict verdict = fraud.evaluate(req);
-				if(verdict.action == FraudEngine.Action.BLOCK)return fail("Risk",
-						"blocked:"+String.join(",", verdict.reasons));
-				
-				ThreeDSDecider.Decision d = decider.decide(ThreeDSDecider.Pref.RISK_BASED, verdict.action);
-				card.setRequest3ds(d.request3ds);
-				
-				java.util.Map<String,String> md = req.getMetadata() == null ?
-						new java.util.HashMap<>(): new java.util.HashMap<>(req.getMetadata());
-				/*String encMeta = cryptoUtil.encrypt("{"reasons":+new
-						com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(verdict.reasons)+","threeDS":"+new
-						com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(d)+"}").data;*/
+        if (keyBytes.length != 32) {
+            throw new IllegalArgumentException("pciMetaKeyBase64 must be 32 bytes (AES-256).");
+        }
+        this.cryptoUtil = new CryptoUtil(keyBytes);
+    }
 
+    public PaymentResponse initiate(PaymentRequest req) throws Exception {
+        // --- FIXED POLICY CHECK ---
+        // Dynamically find the region from the loaded YAML configuration
+    	PaymentsProperties.RegionConfig regionConfig = paymentsProperties.getSupportedRegions().stream()
+    	        .filter(r -> r.getCode().equalsIgnoreCase(req.getRegion().name())) 
+    	        .findFirst()
+    	        .orElse(null);
 
+        if (regionConfig == null) {
+            log.error("Validation failed: Region {} not found in configuration", req.getRegion());
+            return fail("Policy", "region_not_supported");
+        }
 
-ObjectMapper mapper = new ObjectMapper();
+        // Logic for Coupon/Amount
+        CouponsService.Result cr = new CouponsService()
+                .apply(req.getRegion(), req.getAmount(), req.getCouponCode());
+        Amount toCharge = cr.finalAmount();
 
-String json = "{\"reasons\":" + mapper.writeValueAsString(verdict.reasons)
-            + ",\"threeDS\":" + mapper.writeValueAsString(d) + "}";
+        // Fraud and Risk evaluation
+        FraudEngine.Verdict verdict = fraud.evaluate(req);
+        if (verdict.action == FraudEngine.Action.BLOCK) {
+            return fail("Risk", "blocked:" + String.join(",", verdict.reasons));
+        }
 
-// Option 1: encrypt -> bytes, then Base64
-String encMeta = Base64.getEncoder().encodeToString(
-    cryptoUtil.encrypt(json.getBytes(StandardCharsets.UTF_8))
-);
+        ThreeDSDecider.Decision d = decider.decide(ThreeDSDecider.Pref.RISK_BASED, verdict.action);
+        card.setRequest3ds(d.request3ds);
 
+        // Metadata Encryption
+        Map<String, String> md = req.getMetadata() == null ? new HashMap<>() : new HashMap<>(req.getMetadata());
+        ObjectMapper mapper = new ObjectMapper();
+        String json = "{\"reasons\":" + mapper.writeValueAsString(verdict.reasons)
+                    + ",\"threeDS\":" + mapper.writeValueAsString(d) + "}";
 
-				md.put("encMeta", encMeta);
-				req.setMetadata(md);
-				req.setAmount(toCharge);
-				
-				
+        String encMeta = Base64.getEncoder().encodeToString(
+            cryptoUtil.encrypt(json.getBytes(StandardCharsets.UTF_8))
+        );
 
-				 switch (req.getMethod()) {
-				            case CARD:
-				                if (req.getCardToken() == null || req.getCardToken().isBlank())
-				                    return fail("Card", "missing_card_token");
-				                return card.authorize(req);
+        md.put("encMeta", encMeta);
+        req.setMetadata(md);
+        req.setAmount(toCharge);
 
-				            case APPLE_PAY:
-				                if (req.getWalletToken() == null || req.getWalletToken().isBlank())
-				                    return fail("ApplePay", "missing_wallet_token");
-				                return apple.authorize(req);
+        // Routing to correct provider
+        switch (req.getMethod()) {
+            case CARD:
+                if (req.getCardToken() == null || req.getCardToken().isBlank())
+                    return fail("Card", "missing_card_token");
+                return card.authorize(req);
 
-				            case GOOGLE_PAY:
-				                if (req.getWalletToken() == null || req.getWalletToken().isBlank())
-				                    return fail("GooglePay", "missing_wallet_token");
-				                return gpay.authorize(req);
+            case APPLE_PAY:
+                if (req.getWalletToken() == null || req.getWalletToken().isBlank())
+                    return fail("ApplePay", "missing_wallet_token");
+                return apple.authorize(req);
 
-				            case EMI:
-				                if (req.getEmiPlan() == null) return fail("EMI", "missing_emi_plan");
-				                // Fix HTML entity && and use instance 'policy' (not type 'Policy')
-				                if (!policy.emi.enabled ||
-				                    (policy.emi.allowedTenures != null &&
-				                     !policy.emi.allowedTenures.contains(req.getEmiPlan().getTenureMonths()))) {
-				                    return fail("EMI", "emi_not_allowed_for_region_or_tenure");
-				                }
-				                return emi.authorize(req);
+            case GOOGLE_PAY:
+                if (req.getWalletToken() == null || req.getWalletToken().isBlank())
+                    return fail("GooglePay", "missing_wallet_token");
+                return gpay.authorize(req);
 
-				            case COD:
-				                return cod.authorize(req);
+            case EMI:
+                if (req.getEmiPlan() == null) return fail("EMI", "missing_emi_plan");
+                // Simplified EMI check based on provider name in YAML
+                if (!"razorpay".equalsIgnoreCase(regionConfig.getProvider())) {
+                    return fail("EMI", "emi_not_allowed_for_region");
+                }
+                return emi.authorize(req);
 
-				            default:
-				                return fail("Unknown", "unsupported_method");
-				        }
-				    }
+            case COD:
+                return cod.authorize(req);
 
-public PaymentResponse capture(String provider, String intentId) throws Exception {
-	switch(provider) {
-	case "Stripe": return card.capture(intentId);
-	case "COD": return cod.capture(intentId);
-	case "Razorpay": return 
-			PaymentResponse.of(PaymentResponse.Status.AUTHORIZED, provider);
-	default: return fail(provider,"capture_not_supported_for_provider");
-	}
-	}
-	private PaymentResponse fail(String provider, String reason) {
-		PaymentResponse r = new PaymentResponse();
-		r.setStatus(PaymentResponse.Status.FAILED);
-		r.setProvider(provider);
-		r.setFailureReason(reason);
-		return r;
-	}
-	
-}
+            default:
+                return fail("Unknown", "unsupported_method");
+        }
+    }
 
+    public PaymentResponse capture(String provider, String intentId) throws Exception {
+        switch (provider) {
+            case "Stripe": return card.capture(intentId);
+            case "COD": return cod.capture(intentId);
+            case "Razorpay": return PaymentResponse.of(PaymentResponse.Status.AUTHORIZED, provider);
+            default: return fail(provider, "capture_not_supported_for_provider");
+        }
+    }
+
+    //this method added for refund option
+    public PaymentResponse refund(String provider, String paymentId, Integer amount) throws Exception {
+        switch (provider.toLowerCase()) {
+            case "stripe":
+                // Assuming card is your CardProviderStripe instance
+                return card.refund(paymentId, amount); 
+                
+            case "razorpay":
+                // Call the emi (EmiProviderRazorpay) instance
+                return emi.refund(paymentId, amount);
+
+            case "cod":
+                return fail("COD", "refund_not_supported_for_cod");
+
+            default:
+                return fail(provider, "unknown_provider");
+        }
+    }
     
-
-
-
+    private PaymentResponse fail(String provider, String reason) {
+        PaymentResponse r = new PaymentResponse();
+        r.setStatus(PaymentResponse.Status.FAILED);
+        r.setProvider(provider);
+        r.setFailureReason(reason);
+        return r;
+    }
+}

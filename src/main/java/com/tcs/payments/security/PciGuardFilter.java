@@ -13,24 +13,46 @@ import jakarta.servlet.http.HttpServletResponse;
 
 
 @Component
-public class PciGuardFilter extends OncePerRequestFilter{
+public class PciGuardFilter extends OncePerRequestFilter {
 
-	@Override
-	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) 
-	throws ServletException,IOException {
-		if("POST".equalsIgnoreCase(request.getMethod()) && request.getRequestURI().startsWith("/api")) {
-			String body = request.getReader().lines().collect(Collectors.joining(""));
-			if(body != null && body.matches(".*(cardNumber|cvv|cvc|expiry).*")) {
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
 
-response.setStatus(400);
-response.setContentType("application/json");
-response.setCharacterEncoding("UTF-8");
+        // Only inspect relevant requests
+        if ("POST".equalsIgnoreCase(request.getMethod())
+                && request.getRequestURI().startsWith("/api")) {
 
-response.getWriter().write("{\"error\":\"pci_violation\",\"message\":\"Do not send PAN/CVV; use PSP tokenization.\"}");
-                  return;
-			}
-			request.setAttribute("rawBody", body);
-		}
-		filterChain.doFilter(request, response);
-	}
+            // Wrap to allow multiple reads
+            MultiReadHttpServletRequest wrapped = new MultiReadHttpServletRequest(request);
+
+            String body = wrapped.getCachedBody(wrapped.getCharacterEncoding());
+            request.setAttribute("rawBody", body); // optional
+
+            if (containsPciData(body)) {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.setContentType("application/json");
+                response.setCharacterEncoding("UTF-8");
+                response.getWriter().write("{\"error\":\"pci_violation\",\"message\":\"Do not send PAN/CVV; use PSP tokenization.\"}");
+                return; // BLOCK the request here
+            }
+
+            // Pass the wrapped request so Spring can bind @RequestBody safely
+            filterChain.doFilter(wrapped, response);
+            return;
+        }
+
+        // Non-POST or non-/api paths
+        filterChain.doFilter(request, response);
+    }
+
+    private boolean containsPciData(String body) {
+        boolean hasPan = body.matches(".*\\b\\d{12,19}\\b.*");
+        boolean hasCvv = body.matches(".*\\b(cvv|cvc)\\b.*");
+        boolean hasExpiry = body.matches(".*\\b(expiry|expMonth|expYear)\\b.*");
+        boolean hasCardNumberKey = body.matches(".*\\b(cardNumber)\\b.*");
+        return hasPan || hasCvv || hasExpiry || hasCardNumberKey;
+    }
 }

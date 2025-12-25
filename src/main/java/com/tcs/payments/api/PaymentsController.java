@@ -27,7 +27,7 @@ public PaymentsController(PaymentOrchestrator orchestrator) {
 }
 
 @PostMapping("/initiate")
-public ResponseEntity<?> initiate(@Valid @RequestBody PaymentRequest req){
+public ResponseEntity<?> initiate(@RequestBody PaymentRequest req){
 	try {
 		PaymentResponse result = orchestrator.initiate(req);
 		return ResponseEntity.status(result.getStatus() == PaymentResponse.Status.FAILED ? 400 : 200) .body(result);
@@ -52,5 +52,32 @@ public ResponseEntity<?> capture(@RequestBody java.util.Map<String,String> body)
 		log.error("capture_error",e);
 		return ResponseEntity.status(500).body(java.util.Map.of("error","server_error","message",e.getMessage()));
 	}
+}
+
+
+//below method added for refund option
+@PostMapping("/refund")
+public ResponseEntity<?> refund(@RequestBody java.util.Map<String, Object> body) {
+    try {
+        String provider = (String) body.get("provider");
+        String paymentId = (String) body.get("paymentId");
+        
+        // Amount is optional for full refund, mandatory for partial refund
+        // Razorpay expects amount in paise (e.g., 50000 for ₹500)
+        Integer amount = (Integer) body.get("amount"); 
+
+        if (provider == null || paymentId == null) {
+            return ResponseEntity.badRequest().body(java.util.Map.of("error", "missing_params"));
+        }
+
+        // Logic: Orchestrator calls the Razorpay API to process the refund
+        PaymentResponse result = orchestrator.refund(provider, paymentId, amount);
+        
+        return ResponseEntity.status(result.getStatus() == PaymentResponse.Status.FAILED ? 400 : 200)
+                             .body(result);
+    } catch (Exception e) {
+        log.error("refund_error", e);
+        return ResponseEntity.status(500).body(java.util.Map.of("error", "server_error", "message", e.getMessage()));
+    }
 }
 }

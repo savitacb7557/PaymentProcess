@@ -19,6 +19,21 @@ public class CodProvider implements PaymentProvider {
 		return r;
 	}
 	
+	  @Override
+	    public PaymentResponse refund(String intentId, Integer amount) {
+	        // COD refunds are handled manually (Cash back or Store Credit)
+	        // We return a SUCCESS/CAPTURED status to indicate the request was acknowledged
+	        PaymentResponse r = new PaymentResponse();
+	        r.setProvider("COD");
+	        r.setIntentId(intentId);
+	        
+	        // Use the status that your controller recognizes as a success (CAPTURED or SUCCESS)
+	        r.setStatus(PaymentResponse.Status.CAPTURED); 
+	        
+	        r.setFailureReason("Manual refund required for COD. Amount: " + (amount != null ? amount : "Full"));
+	        return r;
+	    }
+	
 }
 
 

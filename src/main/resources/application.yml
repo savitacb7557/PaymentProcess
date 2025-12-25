@@ -1,20 +1,54 @@
-
 spring:
   application:
     name: payments-orchestrator
+
   jackson:
     serialization:
       WRITE_DATES_AS_TIMESTAMPS: false
+    mapper:
+      # Accept "upi", "UPI", "Upi", etc. for enums
+      accept-case-insensitive-enums: true
 
 server:
+  # Changed from 0 to 8080 so you have a consistent port for Postman testing
   port: 0
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,mappings
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.web: DEBUG
+    org.springframework.http.converter.json: DEBUG
+    org.springframework.validation: DEBUG
+    # Log your project package to see the Policy decisions
+    com.tcs.payments: DEBUG
+
+# --- Payments Configuration ---
 payments:
+  # ADDED: This section defines the "Policy" that was failing your tests
+  supported-regions:
+    - code: "US"
+      currency: "USD"
+      provider: "stripe"
+    - code: "IN"
+      currency: "INR"
+      provider: "razorpay"
+
   stripe:
-    secretKey: ""        # put your Stripe secret key (sk_live_... or sk_test_...)
-    webhookSecret: ""    # optional: if you verify Stripe signatures
+    secretKey: "sk_test_51ShunDFXsdj6jjALGm7OSZqneZ1ZG5CXhOfQ59bvwgrO1BJNdpSkrH9djUzy9cFpz5ovYaWSBdOyX87JupLXRdt7006SCBYgLH"
+    webhookSecret: ""
+
   razorpay:
-    keyId: ""            # Razorpay key id
-    keySecret: ""        # Razorpay key secret
+    keyId: "rzp_test_Rvk6pvAcQslNoh"
+    keySecret: "tMGbcjh0LbWv0On4u70Wbd5k"
+
   security:
-    pciMetaKeyBase64: "" # 32-byte AES key, base64 (AES-256-GCM)
+    # Your 32-byte AES key (Base64) used for PCI metadata (AES-256-GCM)
+    pciMetaKeyBase64: "mB0Ltl3zlH8BFn6Xp0biUHk4owazHPF4In8GKa8v6S0="

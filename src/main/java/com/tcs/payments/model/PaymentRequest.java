@@ -2,6 +2,7 @@ package com.tcs.payments.model;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import java.util.Map;
 
 public class PaymentRequest {
 	
@@ -13,12 +14,17 @@ public class PaymentRequest {
 	
 	private String cardToken;
 	private String walletToken;
+	private String provider;
 	
 	private boolean saveCard;
 	private EmiPlan emiPlan;
 	private String codNote;
 	private String couponCode;
-	private java.util.Map<String,String> metadata;
+	private Map<String,String> metadata;
+
+	// ADDED: Needed for Stripe 3D Secure/Redirect flow in 2025
+	private String returnUrl;
+	
 	public String getIdempotencyKey() {
 		return idempotencyKey;
 	}
@@ -85,12 +91,24 @@ public class PaymentRequest {
 	public void setCouponCode(String couponCode) {
 		this.couponCode = couponCode;
 	}
-	public java.util.Map<String, String> getMetadata() {
+	public Map<String, String> getMetadata() {
 		return metadata;
 	}
-	public void setMetadata(java.util.Map<String, String> metadata) {
+	public void setMetadata(Map<String, String> metadata) {
 		this.metadata = metadata;
 	}
-	
+	public String getProvider() {
+		return provider;
+	}
+	public void setProvider(String provider) {
+		this.provider = provider;
+	}
 
+	// ADDED: Getter and Setter for returnUrl
+	public String getReturnUrl() {
+		return returnUrl;
+	}
+	public void setReturnUrl(String returnUrl) {
+		this.returnUrl = returnUrl;
+	}
 }
