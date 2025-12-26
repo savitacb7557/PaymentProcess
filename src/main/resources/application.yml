@@ -41,14 +41,14 @@ payments:
       currency: "INR"
       provider: "razorpay"
 
-  stripe:
-    secretKey: "sk_test_51ShunDFXsdj6jjALGm7OSZqneZ1ZG5CXhOfQ59bvwgrO1BJNdpSkrH9djUzy9cFpz5ovYaWSBdOyX87JupLXRdt7006SCBYgLH"
-    webhookSecret: ""
+#  stripe:
+#    secretKey: "sk_test_51ShunDFXsdj6jjALGm7OSZqneZ1ZG5CXhOfQ59bvwgrO1BJNdpSkrH9djUzy9cFpz5ovYaWSBdOyX87JupLXRdt7006SCBYgLH"
+#    webhookSecret: ""
+#
+#  razorpay:
+#    keyId: "rzp_test_Rvk6pvAcQslNoh"
+#    keySecret: "tMGbcjh0LbWv0On4u70Wbd5k"
 
-  razorpay:
-    keyId: "rzp_test_Rvk6pvAcQslNoh"
-    keySecret: "tMGbcjh0LbWv0On4u70Wbd5k"
-
-  security:
-    # Your 32-byte AES key (Base64) used for PCI metadata (AES-256-GCM)
-    pciMetaKeyBase64: "mB0Ltl3zlH8BFn6Xp0biUHk4owazHPF4In8GKa8v6S0="
+#  security:
+#    # Your 32-byte AES key (Base64) used for PCI metadata (AES-256-GCM)
+#    pciMetaKeyBase64: "mB0Ltl3zlH8BFn6Xp0biUHk4owazHPF4In8GKa8v6S0="
