@@ -1,7 +1,6 @@
 spring:
   application:
-    name: payments-orchestrator
-
+    name: PAYMENTPROCESS
   jackson:
     serialization:
       WRITE_DATES_AS_TIMESTAMPS: false
@@ -10,8 +9,8 @@ spring:
       accept-case-insensitive-enums: true
 
 server:
-  # Changed from 0 to 8080 so you have a consistent port for Postman testing
-  port: 0
+  # Port 8763 is standard for Microservices; choose one and delete the other
+  port: 8763
 
 management:
   endpoints:
@@ -22,17 +21,26 @@ management:
     health:
       show-details: always
 
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    instance-id: ${spring.application.name}:${random.value}
+    prefer-ip-address: true
+
 logging:
   level:
     org.springframework.web: DEBUG
     org.springframework.http.converter.json: DEBUG
     org.springframework.validation: DEBUG
-    # Log your project package to see the Policy decisions
     com.tcs.payments: DEBUG
 
 # --- Payments Configuration ---
 payments:
-  # ADDED: This section defines the "Policy" that was failing your tests
+  # Define regions only once
   supported-regions:
     - code: "US"
       currency: "USD"
@@ -41,14 +49,14 @@ payments:
       currency: "INR"
       provider: "razorpay"
 
-#  stripe:
-#    secretKey: "sk_test_51ShunDFXsdj6jjALGm7OSZqneZ1ZG5CXhOfQ59bvwgrO1BJNdpSkrH9djUzy9cFpz5ovYaWSBdOyX87JupLXRdt7006SCBYgLH"
-#    webhookSecret: ""
-#
-#  razorpay:
-#    keyId: "rzp_test_Rvk6pvAcQslNoh"
-#    keySecret: "tMGbcjh0LbWv0On4u70Wbd5k"
+  stripe:
+    secretKey: "sk_test_51ShunDFXsdj6jjALGm7OSZqneZ1ZG5CXhOfQ59bvwgrO1BJNdpSkrH9djUzy9cFpz5ovYaWSBdOyX87JupLXRdt7006SCBYgLH"
+    webhookSecret: ""
 
-#  security:
-#    # Your 32-byte AES key (Base64) used for PCI metadata (AES-256-GCM)
-#    pciMetaKeyBase64: "mB0Ltl3zlH8BFn6Xp0biUHk4owazHPF4In8GKa8v6S0="
+  razorpay:
+    keyId: "rzp_test_Rvk6pvAcQslNoh"
+    keySecret: "tMGbcjh0LbWv0On4u70Wbd5k"
+
+  security:
+    # Your 32-byte AES key (Base64) used for PCI metadata (AES-256-GCM)
+    pciMetaKeyBase64: "mB0Ltl3zlH8BFn6Xp0biUHk4owazHPF4In8GKa8v6S0="
