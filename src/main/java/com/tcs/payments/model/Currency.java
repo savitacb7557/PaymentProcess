@@ -11,4 +11,3 @@ public enum Currency {
     return name().toLowerCase(Locale.ROOT);
   }
 }
-

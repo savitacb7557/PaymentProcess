@@ -18,4 +18,3 @@ public class Amount {
   public Currency getCurrency() { return currency; }           // returns your enum
   public void setCurrency(Currency currency) { this.currency = currency; }
 }
-

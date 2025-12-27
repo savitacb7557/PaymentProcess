@@ -205,4 +205,3 @@ public class RegionPolicy {
         POLICIES.put(RegionCode.CA, CA);
     }
 }
-
